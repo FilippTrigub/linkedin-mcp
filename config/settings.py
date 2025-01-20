@@ -1,6 +1,7 @@
 """MCP LinkedIn server configuration."""
-from typing import Optional
-from pydantic import BaseSettings, HttpUrl, SecretStr
+from pydantic import HttpUrl, SecretStr
+from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     """Application settings."""
