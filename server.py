@@ -4,9 +4,9 @@ import os
 from typing import Optional
 from mcp.server.fastmcp import FastMCP, Context
 
-from .auth.oidc import LinkedInOIDC, UserInfo
-from .post.manager import PostManager, PostRequest, PostCreationError
-from .config.settings import settings
+from linkedin.auth import LinkedInOIDC, UserInfo
+from linkedin.post import PostManager, PostRequest, PostCreationError
+from config.settings import settings
 
 # Configure logging
 logging.basicConfig(level=settings.LOG_LEVEL)
@@ -39,7 +39,7 @@ async def authenticate(ctx: Context) -> str:
         raise
 
 @mcp.tool()
-async def create_post(text: str, visibility: str = "PUBLIC", ctx: Context) -> str:
+async def create_post(text: str, ctx: Context, visibility: str = "PUBLIC") -> str:
     """Create a new post on LinkedIn.
     
     Args:

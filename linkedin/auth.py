@@ -4,7 +4,7 @@ import httpx
 from jose import jwt
 from pydantic import BaseModel
 
-from ..config.settings import settings
+from config.settings import settings
 
 class UserInfo(BaseModel):
     """OpenID Connect UserInfo response model."""

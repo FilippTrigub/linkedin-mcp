@@ -3,7 +3,7 @@ from typing import Optional
 import httpx
 from pydantic import BaseModel
 
-from ..config.settings import settings
+from config.settings import settings
 
 class PostCreationError(Exception):
     """Raised when post creation fails."""

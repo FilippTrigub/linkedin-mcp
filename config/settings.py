@@ -1,4 +1,4 @@
-"""Configuration settings for the LinkedIn MCP server."""
+"""MCP LinkedIn server configuration."""
 from typing import Optional
 from pydantic import BaseSettings, HttpUrl, SecretStr
 
