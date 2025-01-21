@@ -1,6 +1,8 @@
 """LinkedIn MCP Server implementation."""
 import logging
 import os
+
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Context
 
 from linkedin.auth import LinkedInOIDC
@@ -69,4 +71,6 @@ async def create_post(text: str, ctx: Context, visibility: str = "PUBLIC") -> st
         raise
 
 if __name__ == "__main__":
+    load_dotenv()
+    logging.info("Starting LinkedIn MCP server")
     mcp.run()

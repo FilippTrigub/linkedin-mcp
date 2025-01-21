@@ -1,4 +1,7 @@
 """MCP LinkedIn server configuration."""
+import os
+
+from dotenv import load_dotenv
 from pydantic import HttpUrl, SecretStr
 from pydantic_settings import BaseSettings
 
@@ -7,9 +10,10 @@ class Settings(BaseSettings):
     """Application settings."""
     
     # LinkedIn OIDC Settings
-    LINKEDIN_CLIENT_ID: SecretStr
-    LINKEDIN_CLIENT_SECRET: SecretStr
-    LINKEDIN_REDIRECT_URI: HttpUrl
+    load_dotenv()
+    LINKEDIN_CLIENT_ID: SecretStr = os.getenv("LINKEDIN_CLIENT_ID")
+    LINKEDIN_CLIENT_SECRET: SecretStr = os.getenv("LINKEDIN_CLIENT_SECRET")
+    LINKEDIN_REDIRECT_URI: HttpUrl = os.getenv("LINKEDIN_REDIRECT_URI")
     
     # API Endpoints
     LINKEDIN_AUTH_URL: HttpUrl = HttpUrl("https://www.linkedin.com/oauth/v2/authorization")
