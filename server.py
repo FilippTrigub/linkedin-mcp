@@ -1,76 +1,165 @@
-"""LinkedIn MCP Server implementation."""
+"""MCP server for LinkedIn integration."""
 import logging
-import os
+import secrets
+from typing import Dict
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Context
 
-from linkedin.auth import LinkedInOIDC
+from linkedin.auth import LinkedInOAuth, AuthError
 from linkedin.post import PostManager, PostRequest, PostCreationError
-from config.settings import settings
 
 # Configure logging
-logging.basicConfig(level=settings.LOG_LEVEL)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Initialize FastMCP server
-mcp = FastMCP("LinkedIn Integration")
+# Initialize MCP server
+mcp = FastMCP(
+    "LinkedInServer",
+    dependencies=[
+        "httpx",
+        "mcp[cli]",
+        "pydantic",
+        "pydantic-settings",
+        "python-dotenv"
+    ]
+)
 
-# Initialize OIDC client
-oidc_client = LinkedInOIDC()
+# Initialize LinkedIn clients
+auth_client = LinkedInOAuth()
+post_manager = PostManager(auth_client)
+
+# Store for auth states
+auth_states: Dict[str, str] = {}
+
 
 @mcp.tool()
-async def authenticate(ctx: Context) -> str:
-    """Authenticate with LinkedIn using OpenID Connect.
-    
+async def authenticate(ctx: Context = None) -> str:
+    """Start LinkedIn authentication flow.
+
     Returns:
-        Success message with user info
+        URL to visit to authenticate
     """
+    logger.info("Starting LinkedIn authentication flow...")
     try:
-        # In a real implementation, we would handle the OAuth flow properly
-        # For now, we'll use environment variables for demo purposes
-        access_token = os.getenv("LINKEDIN_ACCESS_TOKEN")
-        if not access_token:
-            raise ValueError("LINKEDIN_ACCESS_TOKEN not set in environment")
-        
-        user_info = await oidc_client.get_user_info(access_token)
-        return f"Authenticated as {user_info.name} ({user_info.email})"
+        # Get auth URL and state
+        auth_url, state = await auth_client.get_authorization_url()
+
+        # Store state
+        auth_states[state] = state
+
+        if ctx:
+            ctx.info("Please visit this URL to authenticate with LinkedIn")
+
+        logger.info(f"Generated auth URL: {auth_url}")
+        return auth_url
     except Exception as e:
-        logger.error("Authentication failed: %s", str(e))
-        raise
+        error_msg = f"Failed to start auth flow: {str(e)}"
+        if ctx:
+            ctx.error(error_msg)
+        logger.error(error_msg)
+
 
 @mcp.tool()
-async def create_post(text: str, ctx: Context, visibility: str = "PUBLIC") -> str:
-    """Create a new post on LinkedIn.
-    
+async def handle_oauth_callback(code: str, state: str, ctx: Context = None) -> str:
+    """Handle OAuth callback.
+
     Args:
-        text: Post content
+        code: Authorization code from LinkedIn
+        state: State parameter from callback
+        ctx: MCP Context for progress reporting
+
+    Returns:
+        Success message
+    """
+    logger.info("Handling LinkedIn OAuth callback...")
+    try:
+        # Validate state
+        if state not in auth_states:
+            raise AuthError("Invalid state parameter")
+
+        # Remove used state
+        auth_states.pop(state)
+
+        # Exchange code for tokens
+        if ctx:
+            ctx.info("Exchanging authorization code for tokens...")
+
+        tokens = await auth_client.exchange_code(code)
+
+        # Get user info
+        if ctx:
+            ctx.info("Getting user info...")
+
+        user_info = await auth_client.get_user_info()
+
+        # Save tokens
+        auth_client.save_tokens(user_info.sub)
+        logger.info("Successfully authenticated with LinkedIn!")
+
+        return "Successfully authenticated with LinkedIn!"
+
+    except Exception as e:
+        error_msg = f"Authentication failed: {str(e)}"
+        if ctx:
+            ctx.error(error_msg)
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+
+@mcp.tool()
+async def create_post(text: str, visibility: str = "PUBLIC", ctx: Context = None) -> str:
+    """Create a new post on LinkedIn.
+
+    Args:
+        text: The content of your post
         visibility: Post visibility (PUBLIC or CONNECTIONS)
-        
+        ctx: MCP Context for progress reporting
+
     Returns:
         Success message with post ID
     """
+    logger.info("Creating LinkedIn post...")
     try:
-        # In a real implementation, we would get these from the authenticated session
-        access_token = os.getenv("LINKEDIN_ACCESS_TOKEN")
-        person_id = os.getenv("LINKEDIN_PERSON_ID")
-        
-        if not access_token or not person_id:
-            raise ValueError("LINKEDIN_ACCESS_TOKEN and LINKEDIN_PERSON_ID must be set")
-            
-        post_manager = PostManager(access_token, person_id)
-        post_request = PostRequest(text=text, visibility=visibility)
-        
+        if ctx:
+            ctx.info(f"Creating LinkedIn post with visibility: {visibility}")
+
+        # Check if we need to authenticate
+        if not auth_client.is_authenticated:
+            if ctx:
+                ctx.info("Not authenticated. Please authenticate first using the authenticate tool.")
+            raise RuntimeError("Not authenticated. Please authenticate first.")
+
+        # Create post request
+        post_request = PostRequest(
+            text=text,
+            visibility=visibility
+        )
+
+        # Create the post
         post_id = await post_manager.create_post(post_request)
-        return f"Post created successfully with ID: {post_id}"
-    except PostCreationError as e:
-        logger.error("Post creation failed: %s", str(e))
-        raise
+        logger.info(f"Successfully created LinkedIn post with ID: {post_id}")
+
+        return f"Successfully created LinkedIn post with ID: {post_id}"
+
+    except (AuthError, PostCreationError) as e:
+        error_msg = str(e)
+        if ctx:
+            ctx.error(error_msg)
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
     except Exception as e:
-        logger.error("Unexpected error: %s", str(e))
-        raise
+        error_msg = f"Unexpected error: {str(e)}"
+        if ctx:
+            ctx.error(error_msg)
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
 
 if __name__ == "__main__":
     load_dotenv()
-    logging.info("Starting LinkedIn MCP server")
+    logger.info("Starting LinkedIn server...")
     mcp.run()
