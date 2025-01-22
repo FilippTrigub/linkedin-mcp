@@ -52,10 +52,13 @@ async def authenticate(ctx: Context = None) -> str:
         auth_states[state] = state
 
         if ctx:
-            ctx.info("Please visit this URL to authenticate with LinkedIn")
+            ctx.info(f"Please visit this URL to authenticate with LinkedIn: {auth_url}")
 
         logger.info(f"Generated auth URL: {auth_url}")
-        return auth_url
+        return (f"The user has to visit the following url: \n{auth_url} \n "
+                f"Reprint the url, tell the user to visit it to authenticate with LinkedIn "
+                f"and then to copy the callback url with the code into the Claude chat. "
+                f"Use handle_oauth_callback to finish the authentication process.")
     except Exception as e:
         error_msg = f"Failed to start auth flow: {str(e)}"
         if ctx:
