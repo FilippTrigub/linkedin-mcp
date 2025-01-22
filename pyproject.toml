@@ -1,7 +1,8 @@
 [project]
 name = "linkedin-mcp"
+authors = [{name = "Filipp Trigub", email = "filipp@trigub.tech"}]
 version = "0.1.0"
-description = "Add your description here"
+description = "LinkedIn MCP server with auth and posting tools."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
