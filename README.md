@@ -41,3 +41,29 @@ Post to LinkedIn directly from Claude Desktop with support for text and media at
    ```
 
 ## Claude Desktop Configuration
+
+Add the following configuration to `claude-desktop.json`:
+
+```json
+{
+  "mcpServers": {
+    "linkedin-mcp": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "C:\\coding_challanges\\mcp\\linkedin-mcp",
+        "run",
+        "server.py"
+      ],
+      "env": {
+        "LINKEDIN_CLIENT_ID": "<yours>",
+        "LINKEDIN_CLIENT_SECRET": "<yours>",
+        "LINKEDIN_REDIRECT_URI": "<yours>"
+      }
+    }
+  }
+}
+```
+
+## License
+MIT License
