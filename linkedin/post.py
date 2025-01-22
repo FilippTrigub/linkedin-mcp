@@ -1,8 +1,11 @@
 """LinkedIn post management implementation."""
-from typing import Optional
+from enum import Enum
 import logging
+import mimetypes
+from pathlib import Path
+from typing import Optional, List
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, FilePath
 
 from config.settings import settings
 from linkedin.auth import LinkedInOAuth
@@ -13,25 +16,39 @@ class PostCreationError(Exception):
     """Raised when post creation fails."""
     pass
 
-class PostRequest(BaseModel):
-    """LinkedIn post request model."""
-    text: str
-    visibility: str = "PUBLIC"  # PUBLIC or CONNECTIONS
+class MediaUploadError(Exception):
+    """Raised when media upload fails."""
+    pass
 
-class PostVisibility:
+class MediaCategory(str, Enum):
+    """Valid media categories."""
+    NONE = "NONE"
+    IMAGE = "IMAGE"
+    VIDEO = "VIDEO"
+    ARTICLE = "ARTICLE"
+
+class PostVisibility(str, Enum):
     """Valid post visibility values."""
     PUBLIC = "PUBLIC"
     CONNECTIONS = "CONNECTIONS"
+
+class MediaRequest(BaseModel):
+    """Media attachment request."""
+    file_path: FilePath
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+class PostRequest(BaseModel):
+    """LinkedIn post request model."""
+    text: str
+    visibility: PostVisibility = PostVisibility.PUBLIC
+    media: Optional[List[MediaRequest]] = None
 
 class PostManager:
     """Manager for LinkedIn posts."""
 
     def __init__(self, auth_client: LinkedInOAuth) -> None:
-        """Initialize the post manager.
-
-        Args:
-            auth_client: LinkedIn auth client for authentication
-        """
+        """Initialize the post manager."""
         self.auth_client = auth_client
 
     @property
@@ -47,31 +64,68 @@ class PostManager:
             "Content-Type": "application/json"
         }
 
-    async def create_post(self, post_request: PostRequest) -> str:
-        """Create a new LinkedIn post.
-
-        Args:
-            post_request: Post creation request
-
+    async def _register_upload(self, file_path: Path) -> tuple[str, str, str]:
+        """Register media upload with LinkedIn.
+        
         Returns:
-            Post ID from LinkedIn
-
-        Raises:
-            PostCreationError: If post creation fails
+            Tuple of (upload_url, asset_id, media_type)
         """
-        logger.info(f"Creating LinkedIn post with visibility: {post_request.visibility}")
-        # Validate visibility
-        if post_request.visibility not in (PostVisibility.PUBLIC, PostVisibility.CONNECTIONS):
-            raise PostCreationError("Invalid visibility value")
+        # Determine media type from file extension
+        media_type = mimetypes.guess_type(file_path)[0]
+        if not media_type:
+            raise MediaUploadError(f"Unsupported file type: {file_path}")
+        
+        recipe_type = "feedshare-image" if media_type.startswith("image/") else "feedshare-video"
 
-        # Validate text is not empty
+        register_data = {
+            "registerUploadRequest": {
+                "recipes": [f"urn:li:digitalmediaRecipe:{recipe_type}"],
+                "owner": f"urn:li:person:{self.auth_client.user_id}",
+                "serviceRelationships": [{
+                    "relationshipType": "OWNER",
+                    "identifier": "urn:li:userGeneratedContent"
+                }]
+            }
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                str(settings.LINKEDIN_ASSET_REGISTER_URL),
+                headers=self._headers,
+                json=register_data
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            upload_url = data["value"]["uploadMechanism"][
+                "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
+            ]["uploadUrl"]
+            asset_id = data["value"]["asset"]
+
+            return upload_url, asset_id, recipe_type
+
+    async def _upload_media(self, file_path: Path, upload_url: str) -> None:
+        """Upload media file to LinkedIn."""
+        async with httpx.AsyncClient() as client:
+            with open(file_path, "rb") as f:
+                response = await client.post(
+                    upload_url,
+                    headers={"Authorization": f"Bearer {self.auth_client.access_token}"},
+                    data={'content': f.read()}
+                )
+                response.raise_for_status()
+
+    async def create_post(self, post_request: PostRequest) -> str:
+        """Create a new LinkedIn post with optional media attachments."""
+        logger.info(f"Creating LinkedIn post with visibility: {post_request.visibility}")
+
         if not post_request.text.strip():
             raise PostCreationError("Post text cannot be empty")
 
-        # Ensure we have a user ID
         if not self.auth_client.user_id:
             raise PostCreationError("No authenticated user")
 
+        # Build post payload
         payload = {
             "author": f"urn:li:person:{self.auth_client.user_id}",
             "lifecycleState": "PUBLISHED",
@@ -80,13 +134,39 @@ class PostManager:
                     "shareCommentary": {
                         "text": post_request.text
                     },
-                    "shareMediaCategory": "NONE"
+                    "shareMediaCategory": MediaCategory.NONE.value
                 }
             },
             "visibility": {
-                "com.linkedin.ugc.MemberNetworkVisibility": post_request.visibility
+                "com.linkedin.ugc.MemberNetworkVisibility": post_request.visibility.value
             }
         }
+
+        # Handle media attachments
+        if post_request.media:
+            media_list = []
+            for media_item in post_request.media:
+                # Register and upload each media file
+                upload_url, asset_id, recipe_type = await self._register_upload(media_item.file_path)
+                await self._upload_media(media_item.file_path, upload_url)
+
+                # Add media to post payload
+                media_list.append({
+                    "status": "READY",
+                    "media": asset_id,
+                    "title": {"text": media_item.title} if media_item.title else None,
+                    "description": {"text": media_item.description} if media_item.description else None
+                })
+
+            # Update payload with media
+            payload["specificContent"]["com.linkedin.ugc.ShareContent"].update({
+                "shareMediaCategory": (
+                    MediaCategory.IMAGE.value 
+                    if recipe_type == "feedshare-image" 
+                    else MediaCategory.VIDEO.value
+                ),
+                "media": media_list
+            })
 
         try:
             async with httpx.AsyncClient() as client:
@@ -97,7 +177,6 @@ class PostManager:
                 )
                 response.raise_for_status()
 
-                # Get post ID from response header
                 post_id = response.headers.get("x-restli-id")
                 if not post_id:
                     raise PostCreationError("No post ID returned from LinkedIn")
@@ -109,9 +188,5 @@ class PostManager:
             error_msg = f"Failed to create post: {str(e)}"
             if e.response:
                 error_msg += f" Response: {e.response.text}"
-            logger.error(error_msg)
-            raise PostCreationError(error_msg) from e
-        except Exception as e:
-            error_msg = f"Unexpected error creating post: {str(e)}"
             logger.error(error_msg)
             raise PostCreationError(error_msg) from e

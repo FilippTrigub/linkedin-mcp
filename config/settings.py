@@ -33,6 +33,10 @@ class Settings(BaseSettings):
         default="https://api.linkedin.com/v2/ugcPosts",
         description="LinkedIn posts endpoint"
     )
+    LINKEDIN_ASSET_REGISTER_URL: HttpUrl = Field(
+        default="https://api.linkedin.com/v2/assets?action=registerUpload",
+        description="LinkedIn asset registration endpoint"
+    )
 
     # OAuth Scopes
     LINKEDIN_SCOPES: list[str] = [

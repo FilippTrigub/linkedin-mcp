@@ -1,13 +1,15 @@
 """MCP server for LinkedIn integration."""
 import logging
 import secrets
-from typing import Dict
+from typing import Dict, List
+from pathlib import Path
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Context
+from pydantic import FilePath
 
 from linkedin.auth import LinkedInOAuth, AuthError
-from linkedin.post import PostManager, PostRequest, PostCreationError
+from linkedin.post import PostManager, PostRequest, PostCreationError, MediaRequest
 
 # Configure logging
 logging.basicConfig(
@@ -45,10 +47,7 @@ async def authenticate(ctx: Context = None) -> str:
     """
     logger.info("Starting LinkedIn authentication flow...")
     try:
-        # Get auth URL and state
         auth_url, state = await auth_client.get_authorization_url()
-
-        # Store state
         auth_states[state] = state
 
         if ctx:
@@ -61,6 +60,7 @@ async def authenticate(ctx: Context = None) -> str:
         if ctx:
             ctx.error(error_msg)
         logger.error(error_msg)
+        raise
 
 
 @mcp.tool()
@@ -77,26 +77,20 @@ async def handle_oauth_callback(code: str, state: str, ctx: Context = None) -> s
     """
     logger.info("Handling LinkedIn OAuth callback...")
     try:
-        # Validate state
         if state not in auth_states:
             raise AuthError("Invalid state parameter")
 
-        # Remove used state
         auth_states.pop(state)
 
-        # Exchange code for tokens
         if ctx:
             ctx.info("Exchanging authorization code for tokens...")
 
         tokens = await auth_client.exchange_code(code)
 
-        # Get user info
         if ctx:
             ctx.info("Getting user info...")
 
         user_info = await auth_client.get_user_info()
-
-        # Save tokens
         auth_client.save_tokens(user_info.sub)
         logger.info("Successfully authenticated with LinkedIn!")
 
@@ -111,11 +105,21 @@ async def handle_oauth_callback(code: str, state: str, ctx: Context = None) -> s
 
 
 @mcp.tool()
-async def create_post(text: str, visibility: str = "PUBLIC", ctx: Context = None) -> str:
+async def create_post(
+    text: str,
+    media_files: List[FilePath] = None,
+    media_titles: List[str] = None,
+    media_descriptions: List[str] = None,
+    visibility: str = "PUBLIC",
+    ctx: Context = None
+) -> str:
     """Create a new post on LinkedIn.
 
     Args:
         text: The content of your post
+        media_files: List of paths to media files to attach (images or videos)
+        media_titles: Optional titles for media attachments
+        media_descriptions: Optional descriptions for media attachments
         visibility: Post visibility (PUBLIC or CONNECTIONS)
         ctx: MCP Context for progress reporting
 
@@ -127,16 +131,27 @@ async def create_post(text: str, visibility: str = "PUBLIC", ctx: Context = None
         if ctx:
             ctx.info(f"Creating LinkedIn post with visibility: {visibility}")
 
-        # Check if we need to authenticate
         if not auth_client.is_authenticated:
             if ctx:
-                ctx.info("Not authenticated. Please authenticate first using the authenticate tool.")
+                ctx.info("Not authenticated. Please authenticate first.")
             raise RuntimeError("Not authenticated. Please authenticate first.")
+
+        # Prepare media requests if files are provided
+        media_requests = None
+        if media_files:
+            media_requests = []
+            for i, file_path in enumerate(media_files):
+                media_requests.append(MediaRequest(
+                    file_path=file_path,
+                    title=media_titles[i] if media_titles and i < len(media_titles) else None,
+                    description=media_descriptions[i] if media_descriptions and i < len(media_descriptions) else None
+                ))
 
         # Create post request
         post_request = PostRequest(
             text=text,
-            visibility=visibility
+            visibility=visibility,
+            media=media_requests
         )
 
         # Create the post
