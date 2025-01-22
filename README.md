@@ -51,7 +51,7 @@ Add the following configuration to `claude-desktop.json`:
       "command": "uv",
       "args": [
         "--directory",
-        "C:\\coding_challanges\\mcp\\linkedin-mcp",
+        "absolute\\path\\to\\linkedin-mcp",
         "run",
         "server.py"
       ],
