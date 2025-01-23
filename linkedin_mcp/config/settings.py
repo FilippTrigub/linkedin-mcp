@@ -32,6 +32,10 @@ class Settings(BaseSettings):
         default="https://api.linkedin.com/v2/ugcPosts",
         description="LinkedIn posts endpoint"
     )
+    LINKEDIN_ASSET_REGISTER_URL: HttpUrl = Field(
+        default="https://api.linkedin.com/v2/assets?action=registerUpload",
+        description="LinkedIn asset registration endpoint"
+    )
 
     # OAuth Scopes
     LINKEDIN_SCOPES: list[str] = [
@@ -46,7 +50,7 @@ class Settings(BaseSettings):
     RESTLI_PROTOCOL_VERSION: str = "2.0.0"  # Rest.li protocol version
 
     # Token Storage Settings
-    TOKEN_STORAGE_PATH: str = "tokens"
+    TOKEN_STORAGE_PATH: str = os.path.join("linkedin_mcp", "tokens")
 
     # Logging Configuration
     LOG_LEVEL: str = "INFO"

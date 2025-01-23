@@ -54,14 +54,15 @@ class LinkedInOAuth:
         """Check if we have valid tokens."""
         return self._tokens is not None
 
-    def _get_token_path(self, user_id: str) -> str:
+    @staticmethod
+    def _get_token_path(user_id: str) -> str:
         """Get path to token file for user."""
-        logger.info(f"Getting token path for user: {user_id}")
         return os.path.join(settings.TOKEN_STORAGE_PATH, f"{user_id}.json")
 
     def save_tokens(self, user_id: str) -> None:
         """Save tokens to file."""
         if not self._tokens:
+            logger.error("No tokens to save")
             return
 
         token_path = self._get_token_path(user_id)
@@ -78,7 +79,6 @@ class LinkedInOAuth:
             with open(token_path) as f:
                 token_data = json.load(f)
                 self._tokens = OAuthTokens(**token_data)
-                logger.info(f"Loaded tokens for user: {user_id}")
             return True
         except Exception:
             logger.error(f"Failed to load tokens for user: {user_id}")
@@ -97,7 +97,6 @@ class LinkedInOAuth:
         }
 
         auth_url = f"{settings.LINKEDIN_AUTH_URL}?{httpx.QueryParams(params)}"
-        logger.info(f"Generated auth URL: {auth_url}")
         return auth_url, state
 
     async def exchange_code(self, code: str) -> OAuthTokens:
@@ -116,7 +115,6 @@ class LinkedInOAuth:
                 )
                 response.raise_for_status()
                 self._tokens = OAuthTokens(**response.json())
-                logger.info("Successfully exchanged code for tokens")
                 return self._tokens
         except Exception as e:
             raise AuthError(f"Failed to exchange code for tokens: {str(e)}") from e
