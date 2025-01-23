@@ -7,8 +7,8 @@ from typing import Optional, List
 import httpx
 from pydantic import BaseModel, FilePath
 
-from config.settings import settings
-from linkedin.auth import LinkedInOAuth
+from ..config.settings import settings
+from ..linkedin.auth import LinkedInOAuth
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class PostManager:
 
     async def _register_upload(self, file_path: Path) -> tuple[str, str, str]:
         """Register media upload with LinkedIn.
-        
+
         Returns:
             Tuple of (upload_url, asset_id, media_type)
         """
@@ -74,7 +74,7 @@ class PostManager:
         media_type = mimetypes.guess_type(file_path)[0]
         if not media_type:
             raise MediaUploadError(f"Unsupported file type: {file_path}")
-        
+
         recipe_type = "feedshare-image" if media_type.startswith("image/") else "feedshare-video"
 
         register_data = {
@@ -161,8 +161,8 @@ class PostManager:
             # Update payload with media
             payload["specificContent"]["com.linkedin.ugc.ShareContent"].update({
                 "shareMediaCategory": (
-                    MediaCategory.IMAGE.value 
-                    if recipe_type == "feedshare-image" 
+                    MediaCategory.IMAGE.value
+                    if recipe_type == "feedshare-image"
                     else MediaCategory.VIDEO.value
                 ),
                 "media": media_list

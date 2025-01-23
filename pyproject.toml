@@ -1,7 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+linkedin-mcp = "linkedin_mcp.server:main"
+
 [project]
 name = "linkedin-mcp"
-version = "0.1.0"
-description = "Add your description here"
+authors = [{name = "Filipp Trigub", email = "filipp@trigub.tech"}]
+version = "0.1.4"
+description = "LinkedIn MCP server with auth and posting tools."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,3 +20,6 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "python-jose[cryptography]>=3.3.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/linkedin", "src/config"]
