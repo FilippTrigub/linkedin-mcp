@@ -54,7 +54,7 @@ async def authenticate(ctx: Context = None) -> str:
 
         logger.info(f"Generated auth URL: {auth_url}")
         return (f"The user has to visit the following url: \n{auth_url} \n "
-                f"Reprint the url, tell the user to visit it to authenticate with LinkedIn "
+                f"You must always reprint the url, tell the user to visit it to authenticate with LinkedIn "
                 f"and then to copy the callback url with the code into the Claude chat. "
                 f"Use handle_oauth_callback to finish the authentication process.")
     except Exception as e:
@@ -145,6 +145,8 @@ async def create_post(
         if media_files:
             media_requests = []
             for i, file_path in enumerate(media_files):
+                ctx.info(f"Processing media file: {file_path}, "
+                            f"title: {media_titles[i] if media_titles and i < len(media_titles) else None}")
                 media_requests.append(MediaRequest(
                     file_path=file_path,
                     title=media_titles[i] if media_titles and i < len(media_titles) else None,

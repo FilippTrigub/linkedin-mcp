@@ -38,6 +38,11 @@ class MediaRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
 
+class PostMediaItem:
+    file_path: Path
+    title: str = ""
+    description: str = ""
+
 class PostRequest(BaseModel):
     """LinkedIn post request model."""
     text: str
@@ -100,18 +105,23 @@ class PostManager:
             upload_url = data["value"]["uploadMechanism"][
                 "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
             ]["uploadUrl"]
+
             asset_id = data["value"]["asset"]
 
             return upload_url, asset_id, recipe_type
 
-    async def _upload_media(self, file_path: Path, upload_url: str) -> None:
+    async def _upload_media(self, file_path: Path, upload_url: str, media_type: str) -> None:
         """Upload media file to LinkedIn."""
         async with httpx.AsyncClient() as client:
             with open(file_path, "rb") as f:
+                headers = {
+                    "Authorization": f"Bearer {self.auth_client.access_token}",
+                    "media-type-family": "STILLIMAGE" if media_type == "feedshare-image" else "VIDEO"
+                }
                 response = await client.post(
                     upload_url,
-                    headers={"Authorization": f"Bearer {self.auth_client.access_token}"},
-                    data={'content': f.read()}
+                    headers=headers,
+                    content=f.read()
                 )
                 response.raise_for_status()
 
@@ -120,9 +130,11 @@ class PostManager:
         logger.info(f"Creating LinkedIn post with visibility: {post_request.visibility}")
 
         if not post_request.text.strip():
+            logger.error("Post text cannot be empty")
             raise PostCreationError("Post text cannot be empty")
 
         if not self.auth_client.user_id:
+            logger.error("No authenticated user")
             raise PostCreationError("No authenticated user")
 
         # Build post payload
@@ -149,21 +161,20 @@ class PostManager:
             for media_item in post_request.media:
                 # Register and upload each media file
                 upload_url, asset_id, recipe_type = await self._register_upload(media_item.file_path)
-                await self._upload_media(media_item.file_path, upload_url)
+                await self._upload_media(media_item.file_path, upload_url, recipe_type)
 
-                # Add media to post payload
+                # Add media to post payload with required fields
                 media_list.append({
                     "status": "READY",
                     "media": asset_id,
-                    "title": {"text": media_item.title} if media_item.title else None,
-                    "description": {"text": media_item.description} if media_item.description else None
+                    "title": {"text": media_item.title or f"Image {len(media_list) + 1}"},
+                    "description": {"text": media_item.description or f"Image {len(media_list) + 1} description"}
                 })
 
             # Update payload with media
             payload["specificContent"]["com.linkedin.ugc.ShareContent"].update({
                 "shareMediaCategory": (
-                    MediaCategory.IMAGE.value
-                    if recipe_type == "feedshare-image"
+                    MediaCategory.IMAGE.value if recipe_type == "feedshare-image"
                     else MediaCategory.VIDEO.value
                 ),
                 "media": media_list
@@ -180,6 +191,7 @@ class PostManager:
 
                 post_id = response.headers.get("x-restli-id")
                 if not post_id:
+                    logger.error("No post ID returned from LinkedIn")
                     raise PostCreationError("No post ID returned from LinkedIn")
 
                 logger.info(f"Successfully created LinkedIn post with ID: {post_id}")

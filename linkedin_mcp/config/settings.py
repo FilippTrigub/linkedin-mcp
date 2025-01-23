@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     RESTLI_PROTOCOL_VERSION: str = "2.0.0"  # Rest.li protocol version
 
     # Token Storage Settings
-    TOKEN_STORAGE_PATH: str = "tokens"
+    TOKEN_STORAGE_PATH: str = os.path.join("linkedin_mcp", "tokens")
 
     # Logging Configuration
     LOG_LEVEL: str = "INFO"
