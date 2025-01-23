@@ -3,11 +3,11 @@ import json
 import logging
 import os
 import secrets
-from typing import Optional, Dict, Any
+from typing import Optional
 import httpx
 from pydantic import BaseModel
 
-from config.settings import settings
+from linkedin_mcp.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

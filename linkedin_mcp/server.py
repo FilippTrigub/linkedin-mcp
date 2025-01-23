@@ -1,6 +1,5 @@
 """MCP server for LinkedIn integration."""
 import logging
-import secrets
 from typing import Dict
 
 from dotenv import load_dotenv

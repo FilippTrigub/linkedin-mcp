@@ -1,11 +1,10 @@
 """LinkedIn post management implementation."""
-from typing import Optional
 import logging
 import httpx
 from pydantic import BaseModel
 
-from config.settings import settings
-from linkedin.auth import LinkedInOAuth
+from linkedin_mcp.config.settings import settings
+from linkedin_mcp.linkedin.auth import LinkedInOAuth
 
 logger = logging.getLogger(__name__)
 
