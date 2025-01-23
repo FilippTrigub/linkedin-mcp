@@ -80,7 +80,8 @@ Run the server from development directory:
         "--directory",
         "absolute\\path\\to\\linkedin-mcp",
         "run",
-        "server.py"
+        "-m",
+        "linkedin_mcp.server"
       ],
       "env": {
         "LINKEDIN_CLIENT_ID": "<yours>",
