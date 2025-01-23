@@ -1,6 +1,12 @@
+# Pycharm
 .idea
 
+# uv
+.venv
+
+# environment
 .env.*
 .env
 
+# auth
 tokens

@@ -1,8 +1,6 @@
 """MCP server for LinkedIn integration."""
 import logging
-import secrets
-from typing import Dict, List
-from pathlib import Path
+from typing import List
 from typing import Dict
 
 from dotenv import load_dotenv
@@ -10,7 +8,7 @@ from mcp.server.fastmcp import FastMCP, Context
 from pydantic import FilePath
 
 from .linkedin.auth import LinkedInOAuth, AuthError
-from .linkedin.post import PostManager, PostRequest, PostCreationError
+from .linkedin.post import PostManager, PostRequest, PostCreationError, MediaRequest, PostVisibility
 
 # Configure logging
 logging.basicConfig(
@@ -114,7 +112,7 @@ async def create_post(
     media_files: List[FilePath] = None,
     media_titles: List[str] = None,
     media_descriptions: List[str] = None,
-    visibility: str = "PUBLIC",
+    visibility: PostVisibility = "PUBLIC",
     ctx: Context = None
 ) -> str:
     """Create a new post on LinkedIn.

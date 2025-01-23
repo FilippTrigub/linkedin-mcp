@@ -54,7 +54,8 @@ class LinkedInOAuth:
         """Check if we have valid tokens."""
         return self._tokens is not None
 
-    def _get_token_path(self, user_id: str) -> str:
+    @staticmethod
+    def _get_token_path(user_id: str) -> str:
         """Get path to token file for user."""
         logger.info(f"Getting token path for user: {user_id}")
         return os.path.join(settings.TOKEN_STORAGE_PATH, f"{user_id}.json")
