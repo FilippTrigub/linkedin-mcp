@@ -7,7 +7,7 @@ from typing import Optional
 import httpx
 from pydantic import BaseModel
 
-from linkedin_mcp.config.settings import settings
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 

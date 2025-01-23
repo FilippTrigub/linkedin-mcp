@@ -5,8 +5,8 @@ from typing import Dict
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Context
 
-from linkedin.auth import LinkedInOAuth, AuthError
-from linkedin.post import PostManager, PostRequest, PostCreationError
+from .linkedin.auth import LinkedInOAuth, AuthError
+from .linkedin.post import PostManager, PostRequest, PostCreationError
 
 # Configure logging
 logging.basicConfig(
@@ -160,8 +160,12 @@ async def create_post(text: str, visibility: str = "PUBLIC", ctx: Context = None
         logger.error(error_msg)
         raise RuntimeError(error_msg)
 
-
-if __name__ == "__main__":
+def main():
+    """Main function for running the LinkedIn server."""
     load_dotenv()
     logger.info("Starting LinkedIn server...")
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

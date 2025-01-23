@@ -26,11 +26,14 @@ Post to LinkedIn directly from Claude Desktop with support for text and media at
    Configure OAuth redirect URL: http://localhost:3000/callback
    ```
 
-2. Clone and install:
+2. Install
+   Install `pipx` if not already installed
    ```bash
-   git clone https://github.com/FilippTrigub/linkedin-mcp.git
-   cd linkedin-mcp
-   uv venv
+   pip install pipx
+   ```
+   Install linkedin-mcp
+   ```bash
+   pipx install linkedin-mcp
    ```
 
 3. Create `.env` file:
@@ -48,7 +51,31 @@ Add the following configuration to `claude-desktop.json`:
 {
   "mcpServers": {
     "linkedin-mcp": {
-      "command": "uv",
+      "command": "linkedin-mcp",
+      "env": {
+        "LINKEDIN_CLIENT_ID": "<yours>",
+        "LINKEDIN_CLIENT_SECRET": "<yours>",
+        "LINKEDIN_REDIRECT_URI": "<yours>"
+      }
+    }
+  }
+}
+```
+
+## Development
+Clone the repository and install the package in editable mode:
+   ```bash
+   git clone https://github.com/FilippTrigub/linkedin-mcp.git
+   cd linkedin-mcp
+   uv venv
+   ```
+Run the server from development directory:
+
+```json
+{
+  "mcpServers": {
+    "linkedin-mcp": {
+       "command": "uv",
       "args": [
         "--directory",
         "absolute\\path\\to\\linkedin-mcp",
@@ -64,6 +91,7 @@ Add the following configuration to `claude-desktop.json`:
   }
 }
 ```
+   
 
 ## License
 MIT License

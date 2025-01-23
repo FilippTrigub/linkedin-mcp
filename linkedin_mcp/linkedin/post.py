@@ -3,8 +3,8 @@ import logging
 import httpx
 from pydantic import BaseModel
 
-from linkedin_mcp.config.settings import settings
-from linkedin_mcp.linkedin.auth import LinkedInOAuth
+from ..config.settings import settings
+from ..linkedin.auth import LinkedInOAuth
 
 logger = logging.getLogger(__name__)
 
