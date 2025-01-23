@@ -88,6 +88,8 @@ async def handle_oauth_callback(code: str, state: str, ctx: Context = None) -> s
             ctx.info("Exchanging authorization code for tokens...")
 
         tokens = await auth_client.exchange_code(code)
+        if not tokens:
+            raise AuthError("Failed to exchange code for tokens")
 
         if ctx:
             ctx.info("Getting user info...")

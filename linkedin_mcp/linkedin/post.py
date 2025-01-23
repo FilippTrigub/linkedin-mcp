@@ -145,6 +145,7 @@ class PostManager:
         # Handle media attachments
         if post_request.media:
             media_list = []
+            recipe_type = None
             for media_item in post_request.media:
                 # Register and upload each media file
                 upload_url, asset_id, recipe_type = await self._register_upload(media_item.file_path)
@@ -186,7 +187,5 @@ class PostManager:
 
         except httpx.HTTPError as e:
             error_msg = f"Failed to create post: {str(e)}"
-            if e.response:
-                error_msg += f" Response: {e.response.text}"
             logger.error(error_msg)
             raise PostCreationError(error_msg) from e
