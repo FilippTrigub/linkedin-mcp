@@ -59,7 +59,8 @@ async def authenticate(ctx: Context = None) -> str:
         # Open browser
         if not webbrowser.open(auth_url):
             raise RuntimeError("Failed to open browser. Please visit the URL manually: " + auth_url)
-            
+
+        logger.info("Waiting for authentication callback...")
         if ctx:
             ctx.info("Waiting for authentication callback...")
             
@@ -84,6 +85,7 @@ async def authenticate(ctx: Context = None) -> str:
             ctx.info("Getting user info...")
             
         # Get and save user info
+        logger.info("Getting user info & saving tokens...")
         user_info = await auth_client.get_user_info()
         auth_client.save_tokens(user_info.sub)
         

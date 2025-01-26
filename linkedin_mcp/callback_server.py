@@ -10,11 +10,12 @@ logger = logging.getLogger(__name__)
 
 class CallbackServer(HTTPServer):
     """Custom HTTP server with auth data storage."""
-    def __init__(self, server_address, RequestHandlerClass):
+    def __init__(self, server_address, RequestHandlerClass, auth_received: asyncio.Event):
         super().__init__(server_address, RequestHandlerClass)
         self.auth_code = None
         self.state = None
-        self.auth_received = None
+        self.auth_received = auth_received
+
 
 class CallbackHandler(BaseHTTPRequestHandler):
     """Handler for OAuth callback requests."""
@@ -48,6 +49,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"Internal server error!")
         finally:
+            logger.info("Authentication received")
             self.server.auth_received.set()
 
     def log_message(self, format: str, *args) -> None:
@@ -66,8 +68,11 @@ class LinkedInCallbackServer:
     async def start(self) -> None:
         """Start the callback server."""
         try:
-            self.server = CallbackServer(('localhost', self.port), CallbackHandler)
-            self.server.auth_received = self.auth_received
+            self.server = CallbackServer(
+                ('localhost', self.port), 
+                CallbackHandler,
+                self.auth_received
+            )
 
             self.server_thread = Thread(target=self.server.serve_forever)
             self.server_thread.daemon = True
@@ -94,6 +99,7 @@ class LinkedInCallbackServer:
         Returns:
             Tuple of (auth_code, state) or (None, None) on timeout
         """
+        logger.info("Waiting for authentication callback...")
         try:
             await asyncio.wait_for(self.auth_received.wait(), timeout)
             return self.server.auth_code, self.server.state
