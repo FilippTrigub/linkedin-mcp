@@ -12,8 +12,7 @@ Post to LinkedIn directly from Claude Desktop with support for text and media at
 
 ## Tools
 
-- `authenticate`: Start LinkedIn OAuth flow
-- `handle_oauth_callback`: Complete authentication
+- `authenticate`: Authenticate with LinkedIn
 - `create_post`: Create and share posts optionally with media attachments
   - state the file path to the relevant media file to attach it to the post
 

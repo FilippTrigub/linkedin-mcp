@@ -5,7 +5,7 @@
 .venv
 
 # environment
-.env.*
+.env.creds
 .env
 
 # auth
