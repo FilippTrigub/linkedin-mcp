@@ -1,7 +1,7 @@
 """MCP server for LinkedIn integration."""
 import logging
+import webbrowser
 from typing import List
-from typing import Dict
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Context
@@ -9,6 +9,7 @@ from pydantic import FilePath
 
 from .linkedin.auth import LinkedInOAuth, AuthError
 from .linkedin.post import PostManager, PostRequest, PostCreationError, MediaRequest, PostVisibility
+from .callback_server import LinkedInCallbackServer
 
 # Configure logging
 logging.basicConfig(
@@ -33,71 +34,60 @@ mcp = FastMCP(
 auth_client = LinkedInOAuth()
 post_manager = PostManager(auth_client)
 
-# Store for auth states
-auth_states: Dict[str, str] = {}
-
 
 @mcp.tool()
 async def authenticate(ctx: Context = None) -> str:
-    """Start LinkedIn authentication flow.
+    """Start LinkedIn authentication flow and handle callback automatically.
 
     Returns:
-        URL to visit to authenticate
+        Success message after authentication
     """
     logger.info("Starting LinkedIn authentication flow...")
+    callback_server = None
+    
     try:
-        auth_url, state = await auth_client.get_authorization_url()
-        auth_states[state] = state
+        # Start callback server
+        callback_server = LinkedInCallbackServer(port=3000)
+        await callback_server.start()
 
+        # Get auth URL
+        auth_url, expected_state = await auth_client.get_authorization_url()
+        
         if ctx:
-            ctx.info(f"Please visit this URL to authenticate with LinkedIn: {auth_url}")
-
-        logger.info(f"Generated auth URL: {auth_url}")
-        return (f"The user has to visit the following url: \n{auth_url} \n "
-                f"You must always reprint the url, tell the user to visit it to authenticate with LinkedIn "
-                f"and then to copy the callback url with the code into the Claude chat. "
-                f"Use handle_oauth_callback to finish the authentication process.")
-    except Exception as e:
-        error_msg = f"Failed to start auth flow: {str(e)}"
+            ctx.info("Opening browser for authentication...")
+        
+        # Open browser
+        if not webbrowser.open(auth_url):
+            raise RuntimeError("Failed to open browser. Please visit the URL manually: " + auth_url)
+            
         if ctx:
-            ctx.error(error_msg)
-        logger.error(error_msg)
-        raise
-
-
-@mcp.tool()
-async def handle_oauth_callback(code: str, state: str, ctx: Context = None) -> str:
-    """Handle OAuth callback.
-
-    Args:
-        code: Authorization code from LinkedIn
-        state: State parameter from callback
-        ctx: MCP Context for progress reporting
-
-    Returns:
-        Success message
-    """
-    logger.info("Handling LinkedIn OAuth callback...")
-    try:
-        if state not in auth_states:
+            ctx.info("Waiting for authentication callback...")
+            
+        # Wait for callback
+        code, state = await callback_server.wait_for_callback()
+        
+        if not code or not state:
+            raise AuthError("Authentication failed - no callback received")
+            
+        if state != expected_state:
             raise AuthError("Invalid state parameter")
-
-        auth_states.pop(state)
-
+            
         if ctx:
             ctx.info("Exchanging authorization code for tokens...")
-
+            
+        # Exchange code for tokens
         tokens = await auth_client.exchange_code(code)
         if not tokens:
             raise AuthError("Failed to exchange code for tokens")
-
+            
         if ctx:
             ctx.info("Getting user info...")
-
+            
+        # Get and save user info
         user_info = await auth_client.get_user_info()
         auth_client.save_tokens(user_info.sub)
+        
         logger.info("Successfully authenticated with LinkedIn!")
-
         return "Successfully authenticated with LinkedIn!"
 
     except Exception as e:
@@ -106,6 +96,10 @@ async def handle_oauth_callback(code: str, state: str, ctx: Context = None) -> s
             ctx.error(error_msg)
         logger.error(error_msg)
         raise RuntimeError(error_msg)
+    finally:
+        # Ensure server is stopped
+        if callback_server:
+            callback_server.stop()
 
 
 @mcp.tool()
@@ -178,6 +172,7 @@ async def create_post(
             ctx.error(error_msg)
         logger.error(error_msg)
         raise RuntimeError(error_msg)
+
 
 def main():
     """Main function for running the LinkedIn server."""
