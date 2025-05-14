@@ -48,6 +48,7 @@ class LinkedInOAuth:
 
         # Create token storage directory if it doesn't exist
         os.makedirs(settings.TOKEN_STORAGE_PATH, exist_ok=True)
+        logger.debug(f"Token storage path: {settings.TOKEN_STORAGE_PATH}")
 
     @property
     def is_authenticated(self) -> bool:
@@ -66,27 +67,41 @@ class LinkedInOAuth:
             return
 
         token_path = self._get_token_path(user_id)
-        with open(token_path, 'w') as f:
-            json.dump(self._tokens.model_dump(), f)
+        logger.debug(f"Saving tokens to: {token_path}")
+        try:
+            with open(token_path, 'w') as f:
+                json.dump(self._tokens.model_dump(), f)
+            logger.info(f"Tokens saved successfully for user: {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to save tokens: {str(e)}")
+            raise AuthError(f"Failed to save authentication tokens: {str(e)}")
 
     def load_tokens(self, user_id: str) -> bool:
         """Load tokens from file if they exist."""
         token_path = self._get_token_path(user_id)
+        logger.debug(f"Attempting to load tokens from: {token_path}")
+        
         if not os.path.exists(token_path):
+            logger.info(f"No token file found for user: {user_id}")
             return False
 
         try:
             with open(token_path) as f:
                 token_data = json.load(f)
                 self._tokens = OAuthTokens(**token_data)
+            logger.info(f"Tokens loaded successfully for user: {user_id}")
             return True
-        except Exception:
-            logger.error(f"Failed to load tokens for user: {user_id}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid token file format: {str(e)}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to load tokens for user {user_id}: {str(e)}")
             return False
 
     async def get_authorization_url(self) -> tuple[str, str]:
         """Get the authorization URL for the OAuth2 flow."""
         state = secrets.token_urlsafe()
+        logger.debug(f"Generated state parameter: {state}")
 
         params = {
             "response_type": "code",
@@ -97,44 +112,99 @@ class LinkedInOAuth:
         }
 
         auth_url = f"{settings.LINKEDIN_AUTH_URL}?{httpx.QueryParams(params)}"
+        logger.debug(f"Authorization URL parameters: response_type=code, client_id=REDACTED, redirect_uri={self.redirect_uri}, scope={settings.LINKEDIN_SCOPES}")
         return auth_url, state
 
     async def exchange_code(self, code: str) -> OAuthTokens:
         """Exchange authorization code for tokens."""
+        logger.info("Exchanging authorization code for tokens")
         try:
             async with httpx.AsyncClient() as client:
+                logger.debug(f"Sending token request to: {settings.LINKEDIN_TOKEN_URL}")
+                
+                data = {
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": self.redirect_uri,
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                }
+                
+                logger.debug(f"Token request parameters: grant_type=authorization_code, code=REDACTED, redirect_uri={self.redirect_uri}")
+                
                 response = await client.post(
                     str(settings.LINKEDIN_TOKEN_URL),
-                    data={
-                        "grant_type": "authorization_code",
-                        "code": code,
-                        "redirect_uri": self.redirect_uri,
-                        "client_id": self.client_id,
-                        "client_secret": self.client_secret,
-                    }
+                    data=data
                 )
+                
+                if response.status_code != 200:
+                    logger.error(f"Token request failed: {response.status_code} - {response.text}")
+                    raise AuthError(f"Token request failed with status: {response.status_code}")
+                
                 response.raise_for_status()
-                self._tokens = OAuthTokens(**response.json())
+                
+                # Parse tokens from response
+                token_data = response.json()
+                logger.debug("Token response received successfully")
+                
+                # Store the tokens
+                self._tokens = OAuthTokens(**token_data)
+                logger.info("Tokens parsed and stored in memory")
+                
                 return self._tokens
+                
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error during token exchange: {str(e)}")
+            raise AuthError(f"Failed to exchange code for tokens: HTTP error {e.response.status_code}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error during token exchange: {str(e)}")
+            raise AuthError(f"Failed to exchange code for tokens: Request error - {str(e)}")
         except Exception as e:
-            raise AuthError(f"Failed to exchange code for tokens: {str(e)}") from e
+            logger.error(f"Error during token exchange: {str(e)}")
+            raise AuthError(f"Failed to exchange code for tokens: {str(e)}")
 
     async def get_user_info(self) -> UserInfo:
         """Get user info from LinkedIn."""
+        logger.info("Getting user info from LinkedIn")
+        
         if not self._tokens:
+            logger.error("Not authenticated - no access token available")
             raise AuthError("Not authenticated")
 
         try:
             async with httpx.AsyncClient() as client:
+                logger.debug(f"Sending user info request to: {settings.LINKEDIN_USERINFO_URL}")
+                
                 response = await client.get(
                     str(settings.LINKEDIN_USERINFO_URL),
                     headers={"Authorization": f"Bearer {self._tokens.access_token}"}
                 )
+                
+                if response.status_code != 200:
+                    logger.error(f"User info request failed: {response.status_code} - {response.text}")
+                    raise AuthError(f"User info request failed with status: {response.status_code}")
+                
                 response.raise_for_status()
-                self._user_info = UserInfo(**response.json())
+                
+                # Parse user info from response
+                user_data = response.json()
+                logger.debug("User info response received successfully")
+                
+                # Store the user info
+                self._user_info = UserInfo(**user_data)
+                logger.info(f"User info retrieved for user: {self._user_info.sub}")
+                
                 return self._user_info
+                
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error during user info request: {str(e)}")
+            raise AuthError(f"Failed to get user info: HTTP error {e.response.status_code}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error during user info request: {str(e)}")
+            raise AuthError(f"Failed to get user info: Request error - {str(e)}")
         except Exception as e:
-            raise AuthError(f"Failed to get user info: {str(e)}") from e
+            logger.error(f"Error during user info request: {str(e)}")
+            raise AuthError(f"Failed to get user info: {str(e)}")
 
     @property
     def access_token(self) -> Optional[str]:
