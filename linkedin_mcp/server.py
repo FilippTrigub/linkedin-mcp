@@ -45,7 +45,7 @@ async def authenticate(ctx: Context = None) -> str:
     """
     logger.info("Starting LinkedIn authentication flow...")
     callback_server = None
-    
+
     try:
         # Start callback server
         callback_server = LinkedInCallbackServer(port=3000)
@@ -55,10 +55,10 @@ async def authenticate(ctx: Context = None) -> str:
         logger.debug("Getting authorization URL from LinkedIn")
         auth_url, expected_state = await auth_client.get_authorization_url()
         logger.debug(f"Authorization URL generated with state: {expected_state}")
-        
+
         if ctx:
             ctx.info("Opening browser for authentication...")
-        
+
         # Open browser
         logger.info(f"Opening browser to: {auth_url}")
         if not webbrowser.open(auth_url):
@@ -71,10 +71,10 @@ async def authenticate(ctx: Context = None) -> str:
         logger.info("Waiting for authentication callback...")
         if ctx:
             ctx.info("Waiting for authentication callback...")
-            
+
         # Add debug info for event status
         logger.debug(f"Auth received event status before wait: {callback_server.auth_received.is_set()}")
-        
+
         try:
             import asyncio
             logger.debug("Current event loop: %s", asyncio.get_running_loop())
@@ -84,48 +84,48 @@ async def authenticate(ctx: Context = None) -> str:
         # Wait for callback with detailed error handling
         logger.debug("Calling wait_for_callback with 120 second timeout")
         code, state = await callback_server.wait_for_callback(timeout=120)  # Reduced timeout for better user experience
-        
+
         logger.debug(f"Auth received event status after wait: {callback_server.auth_received.is_set()}")
         logger.debug(f"Callback result received: code={code is not None}, state={state is not None}")
-        
+
         # Check code and state, providing detailed log messages
         if not code:
             logger.error("No authorization code received from callback")
             raise AuthError("Authentication failed - no authorization code received")
-            
+
         if not state:
             logger.error("No state parameter received from callback")
             raise AuthError("Authentication failed - no state parameter received")
-            
+
         if state != expected_state:
             logger.error(f"State mismatch. Expected: {expected_state}, Got: {state}")
             raise AuthError(f"Invalid state parameter: expected {expected_state}, got {state}")
-        
+
         logger.debug(f"State parameter matches expected value: {state}")
-            
+
         if ctx:
             ctx.info("Exchanging authorization code for tokens...")
-            
+
         # Exchange code for tokens
         logger.info("Exchanging authorization code for tokens")
         tokens = await auth_client.exchange_code(code)
         if not tokens:
             logger.error("Failed to exchange code for tokens")
             raise AuthError("Failed to exchange authorization code for tokens")
-            
+
         logger.debug("Successfully obtained tokens from authorization code")
-            
+
         if ctx:
             ctx.info("Getting user info...")
-            
+
         # Get and save user info
         logger.info("Getting user info & saving tokens...")
         user_info = await auth_client.get_user_info()
         logger.debug(f"User info retrieved: {user_info.sub}")
-        
+
         auth_client.save_tokens(user_info.sub)
         logger.info("Tokens saved successfully")
-        
+
         success_msg = f"Successfully authenticated with LinkedIn as {user_info.name}!"
         logger.info(success_msg)
         return success_msg
@@ -151,12 +151,12 @@ async def authenticate(ctx: Context = None) -> str:
 
 @mcp.tool()
 async def create_post(
-    text: str,
-    media_files: List[FilePath] = None,
-    media_titles: List[str] = None,
-    media_descriptions: List[str] = None,
-    visibility: PostVisibility = "PUBLIC",
-    ctx: Context = None
+        text: str,
+        media_files: List[FilePath] = None,
+        media_titles: List[str] = None,
+        media_descriptions: List[str] = None,
+        visibility: PostVisibility = "PUBLIC",
+        ctx: Context = None
 ) -> str:
     """Create a new post on LinkedIn.
 
@@ -190,11 +190,11 @@ async def create_post(
             for i, file_path in enumerate(media_files):
                 title = media_titles[i] if media_titles and i < len(media_titles) else None
                 description = media_descriptions[i] if media_descriptions and i < len(media_descriptions) else None
-                
+
                 logger.debug(f"Processing media file: {file_path}, title: {title}")
                 if ctx:
                     ctx.info(f"Processing media file: {file_path}, title: {title}")
-                
+
                 media_requests.append(MediaRequest(
                     file_path=file_path,
                     title=title,
@@ -235,7 +235,3 @@ def main():
     load_dotenv()
     logger.info("Starting LinkedIn server...")
     mcp.run()
-
-
-if __name__ == "__main__":
-    main()
