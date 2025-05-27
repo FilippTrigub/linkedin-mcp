@@ -146,9 +146,13 @@ class LinkedInCallbackServer:
             state = self.server.state
             logger.debug(f"Auth code present: {auth_code is not None}, State present: {state is not None}")
             
+            # Reset the event for potential reuse
+            self.auth_received.clear()
+            self.server.auth_code = None
+            self.server.state = None
+            
             return auth_code, state
         except asyncio.TimeoutError:
             logger.error(f"Timeout waiting for authentication callback after {timeout} seconds")
             return None, None
-        finally:
-            self.stop()
+        # Don't stop the server here - let the caller decide
