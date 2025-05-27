@@ -2,6 +2,7 @@
 import asyncio
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from linkedin_mcp.linkedin.post import PostVisibility
 
 
 async def test_create_post():
@@ -16,7 +17,7 @@ async def test_create_post():
 
             result = await session.call_tool("create_post", {
                 "text": "Test post from MCP client",
-                "visibility": "PUBLIC"
+                "visibility": PostVisibility.PUBLIC
             })
             print(f"Post creation result: {result}")
 

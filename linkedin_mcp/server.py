@@ -51,6 +51,50 @@ async def _ensure_callback_server() -> LinkedInCallbackServer:
 
     return _callback_server
 
+
+async def _complete_token_exchange(code: str, ctx: Context = None) -> str:
+    """Complete the token exchange process and save authentication data.
+    
+    Args:
+        code: Authorization code from LinkedIn
+        ctx: MCP Context for progress reporting
+        
+    Returns:
+        Success message with user name
+    """
+    global _callback_server, _auth_state
+    
+    if ctx:
+        ctx.info("Exchanging authorization code for tokens...")
+
+    # Exchange code for tokens
+    logger.info("Exchanging authorization code for tokens")
+    tokens = await auth_client.exchange_code(code)
+    if not tokens:
+        logger.error("Failed to exchange code for tokens")
+        raise RuntimeError("Failed to exchange authorization code for tokens")
+
+    logger.debug("Successfully obtained tokens from authorization code")
+
+    if ctx:
+        ctx.info("Getting user info...")
+
+    # Get and save user info
+    logger.info("Getting user info & saving tokens...")
+    user_info = await auth_client.get_user_info()
+    logger.debug(f"User info retrieved: {user_info.sub}")
+
+    auth_client.save_tokens(user_info.sub)
+    logger.info("Tokens saved successfully")
+
+    # Stop callback server after successful authentication
+    _stop_callback_server()
+    _auth_state = None
+
+    success_msg = f"Successfully authenticated with LinkedIn as {user_info.name}!"
+    logger.info(success_msg)
+    return success_msg
+
 def _stop_callback_server() -> None:
     """Stop the persistent callback server."""
     global _callback_server
@@ -126,36 +170,8 @@ async def authenticate(ctx: Context = None) -> str:
 
         logger.debug(f"State parameter matches expected value: {state}")
 
-        if ctx:
-            ctx.info("Exchanging authorization code for tokens...")
-
-        # Exchange code for tokens
-        logger.info("Exchanging authorization code for tokens")
-        tokens = await auth_client.exchange_code(code)
-        if not tokens:
-            logger.error("Failed to exchange code for tokens")
-            raise RuntimeError("Failed to exchange authorization code for tokens")
-
-        logger.debug("Successfully obtained tokens from authorization code")
-
-        if ctx:
-            ctx.info("Getting user info...")
-
-        # Get and save user info
-        logger.info("Getting user info & saving tokens...")
-        user_info = await auth_client.get_user_info()
-        logger.debug(f"User info retrieved: {user_info.sub}")
-
-        auth_client.save_tokens(user_info.sub)
-        logger.info("Tokens saved successfully")
-
-        # Stop callback server after successful authentication
-        _stop_callback_server()
-        _auth_state = None
-
-        success_msg = f"Successfully authenticated with LinkedIn as {user_info.name}!"
-        logger.info(success_msg)
-        return success_msg
+        # Complete token exchange and save authentication data
+        return await _complete_token_exchange(code, ctx)
 
     except Exception as e:
         error_msg = f"Authentication failed: {str(e)}"
@@ -207,36 +223,8 @@ async def complete_authentication(ctx: Context = None) -> str:
 
             logger.debug(f"State parameter matches expected value: {state}")
 
-            if ctx:
-                ctx.info("Exchanging authorization code for tokens...")
-
-            # Exchange code for tokens
-            logger.info("Exchanging authorization code for tokens")
-            tokens = await auth_client.exchange_code(code)
-            if not tokens:
-                logger.error("Failed to exchange code for tokens")
-                raise RuntimeError("Failed to exchange authorization code for tokens")
-
-            logger.debug("Successfully obtained tokens from authorization code")
-
-            if ctx:
-                ctx.info("Getting user info...")
-
-            # Get and save user info
-            logger.info("Getting user info & saving tokens...")
-            user_info = await auth_client.get_user_info()
-            logger.debug(f"User info retrieved: {user_info.sub}")
-
-            auth_client.save_tokens(user_info.sub)
-            logger.info("Tokens saved successfully")
-
-            # Stop callback server after successful authentication
-            _stop_callback_server()
-            _auth_state = None
-
-            success_msg = f"Successfully authenticated with LinkedIn as {user_info.name}!"
-            logger.info(success_msg)
-            return success_msg
+            # Complete token exchange and save authentication data
+            return await _complete_token_exchange(code, ctx)
         else:
             error_msg = "No callback received yet. Please complete authentication in browser first."
             logger.error(error_msg)
@@ -248,44 +236,6 @@ async def complete_authentication(ctx: Context = None) -> str:
         if ctx:
             ctx.error(error_msg)
         raise RuntimeError(error_msg)
-
-
-@mcp.tool()
-async def check_auth_status(ctx: Context = None) -> str:
-    """Check current authentication status and callback server state.
-
-    Returns:
-        Status message
-    """
-    global _callback_server, _auth_state
-
-    auth_status = "authenticated" if auth_client.is_authenticated else "not authenticated"
-    server_status = "running" if _callback_server is not None else "stopped"
-
-    status_msg = f"Authentication: {auth_status}, Callback server: {server_status}"
-
-    if _auth_state:
-        status_msg += f", Waiting for state: {_auth_state[:8]}..."
-
-    logger.info(status_msg)
-    return status_msg
-
-
-@mcp.tool()
-async def stop_auth_server(ctx: Context = None) -> str:
-    """Stop the persistent callback server.
-
-    Returns:
-        Success message
-    """
-    _stop_callback_server()
-    global _auth_state
-    _auth_state = None
-
-    msg = "Callback server stopped and auth state cleared"
-    logger.info(msg)
-    return msg
-
 
 @mcp.tool()
 async def create_post(
