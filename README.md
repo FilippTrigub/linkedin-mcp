@@ -81,7 +81,7 @@ Run the server from development directory:
         "absolute\\path\\to\\linkedin-mcp",
         "run",
         "-m",
-        "linkedin_mcp.server"
+        "linkedin_mcp"
       ],
       "env": {
         "LINKEDIN_CLIENT_ID": "<yours>",
