@@ -1,12 +1,30 @@
-# Pycharm
-.idea
+# Repo-related
+__pycache__/
+venv/
+.venv/
+tokens/
 
-# uv
-.venv
-
-# environment
-.env.creds
+# Dotenv
 .env
+*.env
 
-# auth
-tokens
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Visual studio code related
+.vscode/

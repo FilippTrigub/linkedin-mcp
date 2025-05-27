@@ -1,7 +1,7 @@
 """MCP server for LinkedIn integration."""
 import logging
 import webbrowser
-from typing import List
+from typing import List, Optional
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Context
@@ -35,6 +35,76 @@ mcp = FastMCP(
 auth_client = LinkedInOAuth()
 post_manager = PostManager(auth_client)
 
+# Global callback server for persistent authentication state
+_callback_server: Optional[LinkedInCallbackServer] = None
+_auth_state: Optional[str] = None
+
+async def _ensure_callback_server() -> LinkedInCallbackServer:
+    """Ensure callback server is running and return it."""
+    global _callback_server
+
+    if _callback_server is None:
+        logger.info("Starting persistent callback server...")
+        _callback_server = LinkedInCallbackServer(port=3000)
+        await _callback_server.start()
+        logger.info("Persistent callback server started")
+
+    return _callback_server
+
+
+async def _complete_token_exchange(code: str, ctx: Context = None) -> str:
+    """Complete the token exchange process and save authentication data.
+    
+    Args:
+        code: Authorization code from LinkedIn
+        ctx: MCP Context for progress reporting
+        
+    Returns:
+        Success message with user name
+    """
+    global _callback_server, _auth_state
+    
+    if ctx:
+        ctx.info("Exchanging authorization code for tokens...")
+
+    # Exchange code for tokens
+    logger.info("Exchanging authorization code for tokens")
+    tokens = await auth_client.exchange_code(code)
+    if not tokens:
+        logger.error("Failed to exchange code for tokens")
+        raise RuntimeError("Failed to exchange authorization code for tokens")
+
+    logger.debug("Successfully obtained tokens from authorization code")
+
+    if ctx:
+        ctx.info("Getting user info...")
+
+    # Get and save user info
+    logger.info("Getting user info & saving tokens...")
+    user_info = await auth_client.get_user_info()
+    logger.debug(f"User info retrieved: {user_info.sub}")
+
+    auth_client.save_tokens(user_info.sub)
+    logger.info("Tokens saved successfully")
+
+    # Stop callback server after successful authentication
+    _stop_callback_server()
+    _auth_state = None
+
+    success_msg = f"Successfully authenticated with LinkedIn as {user_info.name}!"
+    logger.info(success_msg)
+    return success_msg
+
+def _stop_callback_server() -> None:
+    """Stop the persistent callback server."""
+    global _callback_server
+
+    if _callback_server is not None:
+        logger.info("Stopping persistent callback server")
+        _callback_server.stop()
+        _callback_server = None
+        logger.info("Persistent callback server stopped")
+
 
 @mcp.tool()
 async def authenticate(ctx: Context = None) -> str:
@@ -43,17 +113,18 @@ async def authenticate(ctx: Context = None) -> str:
     Returns:
         Success message after authentication
     """
+    global _auth_state
+
     logger.info("Starting LinkedIn authentication flow...")
-    callback_server = None
 
     try:
-        # Start callback server
-        callback_server = LinkedInCallbackServer(port=3000)
-        await callback_server.start()
+        # Ensure callback server is running
+        callback_server = await _ensure_callback_server()
 
         # Get auth URL
         logger.debug("Getting authorization URL from LinkedIn")
         auth_url, expected_state = await auth_client.get_authorization_url()
+        _auth_state = expected_state  # Store state globally
         logger.debug(f"Authorization URL generated with state: {expected_state}")
 
         if ctx:
@@ -61,93 +132,110 @@ async def authenticate(ctx: Context = None) -> str:
 
         # Open browser
         logger.info(f"Opening browser to: {auth_url}")
-        if not webbrowser.open(auth_url):
-            error_msg = "Failed to open browser. Please visit the URL manually: " + auth_url
+        browser_opened = False
+        try:
+            browser_opened = webbrowser.open(auth_url)
+        except Exception as e:
+            logger.warning(f"Exception when trying to open browser: {str(e)}")
+            browser_opened = False
+
+        if not browser_opened:
+            # Return immediately with URL, but keep server running
+            error_msg = f"Failed to open browser. Please visit the URL manually and then call complete_authentication: {auth_url}"
             logger.error(error_msg)
             if ctx:
                 ctx.error(error_msg)
+            # Don't stop the callback server - let it keep running
             raise RuntimeError(error_msg)
 
+        # Wait for callback with timeout
         logger.info("Waiting for authentication callback...")
         if ctx:
             ctx.info("Waiting for authentication callback...")
 
-        # Add debug info for event status
-        logger.debug(f"Auth received event status before wait: {callback_server.auth_received.is_set()}")
+        code, state = await callback_server.wait_for_callback(timeout=120)
 
-        try:
-            import asyncio
-            logger.debug("Current event loop: %s", asyncio.get_running_loop())
-        except RuntimeError as e:
-            logger.warning(f"Error getting event loop: {str(e)}")
+        # Check if we got the callback
+        if not code or not state:
+            error_msg = "Authentication timeout - no callback received. Please try again."
+            logger.error(error_msg)
+            # Don't stop server yet - user might try again
+            raise RuntimeError(error_msg)
 
-        # Wait for callback with detailed error handling
-        logger.debug("Calling wait_for_callback with 120 second timeout")
-        code, state = await callback_server.wait_for_callback(timeout=120)  # Reduced timeout for better user experience
-
-        logger.debug(f"Auth received event status after wait: {callback_server.auth_received.is_set()}")
-        logger.debug(f"Callback result received: code={code is not None}, state={state is not None}")
-
-        # Check code and state, providing detailed log messages
-        if not code:
-            logger.error("No authorization code received from callback")
-            raise AuthError("Authentication failed - no authorization code received")
-
-        if not state:
-            logger.error("No state parameter received from callback")
-            raise AuthError("Authentication failed - no state parameter received")
-
+        # Validate state
         if state != expected_state:
             logger.error(f"State mismatch. Expected: {expected_state}, Got: {state}")
-            raise AuthError(f"Invalid state parameter: expected {expected_state}, got {state}")
+            _stop_callback_server()  # Stop server on security issue
+            raise RuntimeError("Authentication failed - invalid state parameter")
 
         logger.debug(f"State parameter matches expected value: {state}")
 
-        if ctx:
-            ctx.info("Exchanging authorization code for tokens...")
+        # Complete token exchange and save authentication data
+        return await _complete_token_exchange(code, ctx)
 
-        # Exchange code for tokens
-        logger.info("Exchanging authorization code for tokens")
-        tokens = await auth_client.exchange_code(code)
-        if not tokens:
-            logger.error("Failed to exchange code for tokens")
-            raise AuthError("Failed to exchange authorization code for tokens")
-
-        logger.debug("Successfully obtained tokens from authorization code")
-
-        if ctx:
-            ctx.info("Getting user info...")
-
-        # Get and save user info
-        logger.info("Getting user info & saving tokens...")
-        user_info = await auth_client.get_user_info()
-        logger.debug(f"User info retrieved: {user_info.sub}")
-
-        auth_client.save_tokens(user_info.sub)
-        logger.info("Tokens saved successfully")
-
-        success_msg = f"Successfully authenticated with LinkedIn as {user_info.name}!"
-        logger.info(success_msg)
-        return success_msg
-
-    except AuthError as e:
-        error_msg = f"Authentication error: {str(e)}"
-        logger.error(error_msg)
-        if ctx:
-            ctx.error(error_msg)
-        raise RuntimeError(error_msg)
     except Exception as e:
         error_msg = f"Authentication failed: {str(e)}"
-        logger.exception("Unexpected error during authentication")
+        logger.exception("Error during authentication")
         if ctx:
             ctx.error(error_msg)
         raise RuntimeError(error_msg)
-    finally:
-        # Ensure server is stopped
-        if callback_server:
-            logger.debug("Stopping callback server in finally block")
-            callback_server.stop()
 
+
+@mcp.tool()
+async def complete_authentication(ctx: Context = None) -> str:
+    """Complete authentication using any pending callback data.
+
+    Returns:
+        Success message after authentication
+    """
+    global _callback_server, _auth_state
+
+    logger.info("Attempting to complete authentication with pending callback...")
+
+    try:
+        if not _callback_server:
+            error_msg = "No callback server running. Call authenticate first."
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        if not _auth_state:
+            error_msg = "No pending authentication state. Call authenticate first."
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        # Check if callback was already received
+        if _callback_server.auth_received.is_set():
+            logger.info("Callback already received, processing...")
+            code = _callback_server.server.auth_code
+            state = _callback_server.server.state
+
+            if not code or not state:
+                error_msg = "Callback received but missing code or state"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+
+            # Validate state
+            if state != _auth_state:
+                logger.error(f"State mismatch. Expected: {_auth_state}, Got: {state}")
+                _stop_callback_server()
+                _auth_state = None
+                raise RuntimeError("Authentication failed - invalid state parameter")
+
+            logger.debug(f"State parameter matches expected value: {state}")
+
+            # Complete token exchange and save authentication data
+            return await _complete_token_exchange(code, ctx)
+        else:
+            error_msg = "No callback received yet. Please complete authentication in browser first."
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+    except Exception as e:
+        error_msg = f"Authentication completion failed: {str(e)}"
+        logger.exception("Error during authentication completion")
+        if ctx:
+            ctx.error(error_msg)
+        raise RuntimeError(error_msg)
 
 @mcp.tool()
 async def create_post(

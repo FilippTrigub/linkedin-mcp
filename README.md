@@ -13,6 +13,8 @@ Post to LinkedIn directly from Claude Desktop with support for text and media at
 ## Tools
 
 - `authenticate`: Authenticate with LinkedIn
+- `complete_authentication`: Finish the authentication when `authenticate` wasn't able to complete it automatically
+  - The agent will run this tool when clicking link and manually opening browser was required.
 - `create_post`: Create and share posts optionally with media attachments
   - state the file path to the relevant media file to attach it to the post
 
@@ -81,7 +83,7 @@ Run the server from development directory:
         "absolute\\path\\to\\linkedin-mcp",
         "run",
         "-m",
-        "linkedin_mcp.server"
+        "linkedin_mcp"
       ],
       "env": {
         "LINKEDIN_CLIENT_ID": "<yours>",
